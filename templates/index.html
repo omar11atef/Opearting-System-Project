@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU Scheduling Algorithms</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+
+        .presentation-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transition: all 0.3s ease;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toast Notification Styles */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            transform: translateX(150%);
+            transition: transform 0.4s ease-out;
+        }
+        #toast-container.show {
+            transform: translateX(0);
+        }
+
+        tr { transition: background-color 0.2s; }
+        tr:hover { background-color: #f8fafc; }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex items-center justify-center relative">
+
+    <!-- Toast Notification for Errors -->
+    <div id="toast-container" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg flex items-center gap-3 max-w-sm">
+        <div class="text-xl"><i class="fas fa-exclamation-circle"></i></div>
+        <div>
+            <p class="font-bold">Error</p>
+            <p class="text-sm" id="toast-message">Something went wrong.</p>
+        </div>
+    </div>
+
+    <div class="max-w-6xl w-full mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-800 mb-2">CPU Scheduling Algorithms</h1>
+        </div>
+
+        <!-- Controls Section -->
+        <div class="presentation-card rounded-2xl p-6 md:p-8 border border-white/20">
+            
+            <!-- Setup Row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6 items-end">
+                <!-- Algorithm Selector -->
+                <div class="col-span-1">
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Select Algorithm</label>
+                    <div class="relative">
+                        <select id="algorithmSelect" class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium">
+                            <option value="FCFS">FCFS (First-Come, First-Served)</option>
+                            <option value="SJF_Pre">SJF Preemptive (Shortest Job First)</option>
+                            <option value="SJF_NonPre">SJF Non-Preemptive</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                            <i class="fas fa-chevron-down text-xs"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Number of Processes -->
+                <div class="col-span-1">
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Number of Processes</label>
+                    <input type="number" id="numProcessesInput" placeholder="e.g. 3" min="1" max="20" class="w-full bg-white border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium">
+                </div>
+
+                <!-- Create Inputs Button -->
+                <div class="col-span-1">
+                    <button onclick="generateFields()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-layer-group"></i> Create Inputs
+                    </button>
+                </div>
+
+                <!-- Reset Button -->
+                <div class="col-span-1">
+                    <button onclick="resetAll()" class="w-full bg-white border border-slate-300 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-redo"></i> Reset System
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dynamic Inputs Area (Initially Hidden) -->
+            <div id="dynamicInputsContainer" class="hidden mt-8 border-t border-slate-100 pt-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-semibold text-slate-500">Process Configuration</h3>
+                    
+                    <!-- Run Button connects to Python -->
+                    <button onclick="runSimulation()" id="runBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg shadow-lg shadow-blue-500/30 transition-all transform hover:-translate-y-0.5 flex items-center gap-2">
+                        <i class="fas fa-play"></i> Run Simulation
+                    </button>
+                </div>
+
+                <div class="overflow-hidden rounded-lg border border-slate-200">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-200">
+                                <th class="p-3 font-medium w-24">Process</th>
+                                <th class="p-3 font-medium">Arrival Time (AT)</th>
+                                <th class="p-3 font-medium">Burst Time (BT)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inputsListBody" class="bg-white text-sm">
+                            <!-- Rows added by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingSection" class="hidden presentation-card rounded-2xl p-12 text-center">
+            <div class="flex flex-col items-center justify-center space-y-4">
+                <div class="loader"></div>
+                <h3 class="text-xl font-semibold text-slate-700">Processing...</h3>
+                <p class="text-slate-500">Sending data to Python backend</p>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden space-y-6">
+            
+            <!-- Metrics Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="presentation-card p-6 rounded-xl border-l-4 border-blue-500">
+                    <h4 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Avg. Turnaround Time</h4>
+                    <p class="text-3xl font-bold text-slate-800" id="avgTatDisplay">0.00 ms</p>
+                </div>
+                <div class="presentation-card p-6 rounded-xl border-l-4 border-emerald-500">
+                    <h4 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Avg. Waiting Time</h4>
+                    <p class="text-3xl font-bold text-slate-800" id="avgWtDisplay">0.00 ms</p>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="presentation-card rounded-2xl p-6 md:p-8 overflow-hidden">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fas fa-table text-blue-500"></i> Execution Results
+                </h3>
+                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <table class="w-full text-left border-collapse bg-white">
+                        <thead>
+                            <tr class="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                <th class="p-4 border-b border-slate-200">PID</th>
+                                <th class="p-4 border-b border-slate-200">Arrival (AT)</th>
+                                <th class="p-4 border-b border-slate-200">Burst (BT)</th>
+                                <th class="p-4 border-b border-slate-200 text-blue-600">Completion (CT)</th>
+                                <th class="p-4 border-b border-slate-200 text-purple-600">Turnaround (TAT)</th>
+                                <th class="p-4 border-b border-slate-200 text-emerald-600">Waiting (WT)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultTableBody" class="text-sm text-slate-700 divide-y divide-slate-100">
+                            <!-- Results from Python -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Script to handle Logic and Fetch API -->
+    <script>
+        // DOM Elements
+        const numProcessesInput = document.getElementById('numProcessesInput');
+        const dynamicInputsContainer = document.getElementById('dynamicInputsContainer');
+        const inputsListBody = document.getElementById('inputsListBody');
+        const loadingSection = document.getElementById('loadingSection');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultTableBody = document.getElementById('resultTableBody');
+        const avgTatDisplay = document.getElementById('avgTatDisplay');
+        const avgWtDisplay = document.getElementById('avgWtDisplay');
+        const algorithmSelect = document.getElementById('algorithmSelect');
+        const toastContainer = document.getElementById('toast-container');
+        const toastMessage = document.getElementById('toast-message');
+
+        // --- Error Handling (Toast) ---
+        let toastTimeout;
+        function showError(message) {
+            toastMessage.textContent = message;
+            toastContainer.classList.add('show');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toastContainer.classList.remove('show');
+            }, 3000);
+        }
+
+        // --- Reset Function ---
+        function resetAll() {
+            numProcessesInput.value = '';
+            inputsListBody.innerHTML = '';
+            dynamicInputsContainer.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            loadingSection.classList.add('hidden');
+            toastContainer.classList.remove('show');
+            algorithmSelect.selectedIndex = 0;
+        }
+
+        // --- Generate Input Fields ---
+        function generateFields() {
+            const count = parseInt(numProcessesInput.value);
+            if (isNaN(count) || count < 1) {
+                showError("Please enter a valid number of processes (min 1).");
+                return;
+            }
+            
+            // Clean slate
+            inputsListBody.innerHTML = '';
+            resultsSection.classList.add('hidden');
+
+            for (let i = 0; i < count; i++) {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-100 hover:bg-slate-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-slate-700">P${i}</td>
+                    <td class="p-3">
+                        <input type="number" step="0.1" class="process-at w-full bg-white border border-slate-200 rounded p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Enter AT" required>
+                    </td>
+                    <td class="p-3">
+                        <input type="number" step="0.1" class="process-bt w-full bg-white border border-slate-200 rounded p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Enter BT" required>
+                    </td>
+                `;
+                inputsListBody.appendChild(tr);
+            }
+            dynamicInputsContainer.classList.remove('hidden');
+        }
+
+        // --- Enter Key Support ---
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                if (!dynamicInputsContainer.classList.contains('hidden')) {
+                    runSimulation();
+                } else if (document.activeElement === numProcessesInput) {
+                    generateFields();
+                }
+            }
+        });
+
+        // --- Run Simulation (Connects to Python) ---
+        async function runSimulation() {
+            // 1. Collect Data from Inputs
+            const atInputs = document.querySelectorAll('.process-at');
+            const btInputs = document.querySelectorAll('.process-bt');
+            let processes = []; 
+            
+            if (atInputs.length === 0) {
+                showError("Please generate process inputs first.");
+                return;
+            }
+
+            for (let i = 0; i < atInputs.length; i++) {
+                const atVal = parseFloat(atInputs[i].value);
+                const btVal = parseFloat(btInputs[i].value);
+
+                if (isNaN(atVal) || isNaN(btVal)) {
+                    showError(`Invalid numbers for Process P${i}`);
+                    return;
+                }
+                
+                if (atVal < 0 || btVal < 0) {
+                    showError(`Values cannot be negative (Process P${i})`);
+                    return;
+                }
+
+                processes.push({
+                    pid: `P${i}`, 
+                    at: atVal,
+                    bt: btVal
+                });
+            }
+
+            // 2. Prepare UI
+            resultsSection.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+
+            const algo = algorithmSelect.value;
+            
+            // 3. Send POST request to Python Backend
+            try {
+                const response = await fetch('/calculate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        algorithm: algo,
+                        processes: processes
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Server error');
+                }
+
+                const results = await response.json();
+                
+                if (results.error) {
+                    showError(results.error);
+                } else {
+                    displayResults(results);
+                }
+
+            } catch (error) {
+                console.error('Connection Error:', error);
+                showError("Cannot connect to Python. Is app.py running?");
+            } finally {
+                loadingSection.classList.add('hidden');
+                // Only show results if no error toast is visible
+                if (!document.getElementById('toast-container').classList.contains('show')) {
+                    resultsSection.classList.remove('hidden');
+                }
+            }
+        }
+
+        // --- Display Results ---
+        function displayResults(results) {
+            resultTableBody.innerHTML = '';
+            
+            results.data.forEach((r, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition-colors";
+                const displayPid = index + 1; 
+
+                tr.innerHTML = `
+                    <td class="p-4 font-semibold text-slate-800">${displayPid}</td>
+                    <td class="p-4 text-slate-600">${r.at}</td>
+                    <td class="p-4 text-slate-600">${r.bt}</td>
+                    <td class="p-4 font-bold text-blue-600">${r.ct}</td>
+                    <td class="p-4 font-medium text-purple-600">${r.tat}</td>
+                    <td class="p-4 font-medium text-emerald-600">${r.wt}</td>
+                `;
+                resultTableBody.appendChild(tr);
+            });
+
+            avgTatDisplay.innerText = results.avgTat + " ms";
+            avgWtDisplay.innerText = results.avgWt + " ms";
+        }
+    </script>
+</body>
+</html>
