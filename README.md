@@ -2,7 +2,7 @@
 This repository contains implementations and explanations of various CPU scheduling algorithms, which are essential for operating systems to manage process execution efficiently. The algorithms included cover different strategies to optimize CPU utilization, waiting time, and turnaround time.
 
 ## 📌Algorithms Included
-###🗂️ 1. First Come, First Served (FCFS)
+### 🗂️ 1. First Come, First Served (FCFS)
 - The simplest scheduling algorithm.  
 - Processes are executed in the order they arrive in the ready queue.  
 - **Non-preemptive:** once a process starts execution, it cannot be interrupted.  
