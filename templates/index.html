@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>CPU Scheduling Algorithms</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -84,6 +84,8 @@
                             <option value="FCFS">FCFS (First-Come, First-Served)</option>
                             <option value="SJF_Pre">SJF Preemptive (Shortest Job First)</option>
                             <option value="SJF_NonPre">SJF Non-Preemptive</option>
+                            <option value="Priority_NonPreemptive">Priority (Non-Preemptive)</option>
+                            <option value="Priority_Preemptive">Priority (Preemptive)</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
                             <i class="fas fa-chevron-down text-xs"></i>
@@ -130,6 +132,8 @@
                                 <th class="p-3 font-medium w-24">Process</th>
                                 <th class="p-3 font-medium">Arrival Time (AT)</th>
                                 <th class="p-3 font-medium">Burst Time (BT)</th>
+                                <!-- Priority header (hidden by default) -->
+                                <th class="p-3 font-medium priority-column hidden">Priority</th>
                             </tr>
                         </thead>
                         <tbody id="inputsListBody" class="bg-white text-sm">
@@ -186,6 +190,20 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Gantt Chart Box (placed right under the table as requested) -->
+                <div id="ganttContainer" class="mt-6">
+                    <div class="presentation-card rounded-2xl p-4 border border-slate-200 bg-white">
+                        <h4 class="text-lg font-bold text-slate-800 mb-3">Gantt Chart</h4>
+                        <div id="ganttChart" class="w-full h-28 border border-slate-200 rounded-md bg-white overflow-x-auto flex items-center p-2">
+                            <!-- JS will render gantt blocks here -->
+                        </div>
+                        <div id="ganttTimeline" class="mt-2 text-sm text-slate-500 flex items-center gap-4">
+                            <!-- timeline markers can be appended here if needed -->
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -205,6 +223,15 @@
         const algorithmSelect = document.getElementById('algorithmSelect');
         const toastContainer = document.getElementById('toast-container');
         const toastMessage = document.getElementById('toast-message');
+
+        // Show/Hide Priority Column based on selected algorithm
+        algorithmSelect.addEventListener("change", function () {
+            const showPriority = (this.value === "Priority_NonPreemptive" || this.value === "Priority_Preemptive");
+            document.querySelectorAll(".priority-column").forEach(col => {
+                if (showPriority) col.classList.remove("hidden");
+                else col.classList.add("hidden");
+            });
+        });
 
         // --- Error Handling (Toast) ---
         let toastTimeout;
@@ -240,9 +267,14 @@
             inputsListBody.innerHTML = '';
             resultsSection.classList.add('hidden');
 
+            // decide if priority inputs should be created (current algorithm)
+            const showPriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive");
+
             for (let i = 0; i < count; i++) {
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-slate-100 hover:bg-slate-50 transition-colors";
+
+                // build inner HTML, include priority td but hidden/shown by CSS class
                 tr.innerHTML = `
                     <td class="p-3 font-bold text-slate-700">P${i}</td>
                     <td class="p-3">
@@ -250,6 +282,9 @@
                     </td>
                     <td class="p-3">
                         <input type="number" step="0.1" class="process-bt w-full bg-white border border-slate-200 rounded p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Enter BT" required>
+                    </td>
+                    <td class="p-3 priority-column ${showPriority ? '' : 'hidden'}">
+                        <input type="number" step="0.1" class="process-priority w-full bg-white border border-slate-200 rounded p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Enter Priority">
                     </td>
                 `;
                 inputsListBody.appendChild(tr);
@@ -273,12 +308,16 @@
             // 1. Collect Data from Inputs
             const atInputs = document.querySelectorAll('.process-at');
             const btInputs = document.querySelectorAll('.process-bt');
+            const prInputs = document.querySelectorAll('.process-priority');
             let processes = []; 
             
             if (atInputs.length === 0) {
                 showError("Please generate process inputs first.");
                 return;
             }
+
+            // determine if we should include priority into payload
+            const includePriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive");
 
             for (let i = 0; i < atInputs.length; i++) {
                 const atVal = parseFloat(atInputs[i].value);
@@ -294,11 +333,24 @@
                     return;
                 }
 
-                processes.push({
+                const procObj = {
                     pid: `P${i}`, 
                     at: atVal,
                     bt: btVal
-                });
+                };
+
+                if (includePriority) {
+                    // pick matching priority input (prInputs aligns with rows that have the field visible)
+                    const prValRaw = prInputs[i] ? prInputs[i].value : '';
+                    const prVal = prValRaw === '' ? 0 : parseFloat(prValRaw);
+                    if (isNaN(prVal)) {
+                        showError(`Invalid priority for Process P${i}`);
+                        return;
+                    }
+                    procObj.priority = prVal;
+                }
+
+                processes.push(procObj);
             }
 
             // 2. Prepare UI
@@ -367,7 +419,124 @@
 
             avgTatDisplay.innerText = results.avgTat + " ms";
             avgWtDisplay.innerText = results.avgWt + " ms";
+
+            // Draw Gantt chart beneath the table
+            drawGanttChart(results);
         }
+
+        // --- Gantt Chart Rendering ---
+        // This function creates horizontal blocks proportional to BT within the container.
+        function drawGanttChart(results) {
+            const container = document.getElementById('ganttChart');
+            const timelineContainer = document.getElementById('ganttTimeline');
+            container.innerHTML = '';
+            timelineContainer.innerHTML = '';
+
+            const data = results.data.slice(); // copy
+            if (!data || data.length === 0) return;
+
+            // Ensure numeric sorts and values
+            data.forEach(d => {
+                d.at = Number(d.at);
+                d.bt = Number(d.bt);
+                d.ct = Number(d.ct);
+                d.tat = Number(d.tat);
+                d.wt = Number(d.wt);
+            });
+
+            // Find overall timeline length
+            const maxCT = Math.max(...data.map(p => p.ct));
+            const minAT = Math.min(...data.map(p => p.at));
+
+            // Guard: avoid division by zero
+            const totalSpan = Math.max(1, maxCT - minAT);
+
+            // For consistent left-to-right order, sort by completion time (or arrival as fallback)
+            data.sort((a, b) => {
+                if (a.ct !== b.ct) return a.ct - b.ct;
+                return a.at - b.at;
+            });
+
+            // Create blocks
+            data.forEach((p, idx) => {
+                // approximate start time as ct - bt (backend must provide correct ct for preemptive results)
+                const start = (p.ct - p.bt);
+                const leftPercent = ((start - minAT) / totalSpan) * 100;
+                const widthPercent = (p.bt / totalSpan) * 100;
+
+                const block = document.createElement('div');
+                block.className = 'relative flex items-center justify-center font-semibold text-sm text-slate-700 border border-slate-200';
+                block.style.height = '56px';
+                block.style.minWidth = '40px';
+                block.style.marginRight = '4px';
+                block.style.position = 'relative';
+                // use transform/width to position: create an inner wrapper for absolute positioning
+                const wrapper = document.createElement('div');
+                wrapper.style.position = 'relative';
+                wrapper.style.display = 'inline-block';
+                wrapper.style.height = '56px';
+                wrapper.style.marginRight = '4px';
+                wrapper.style.background = '#f8fafc'; // matches card bg
+                wrapper.style.border = '1px solid #e6eef7';
+                wrapper.style.boxSizing = 'border-box';
+                wrapper.style.width = widthPercent + '%';
+                wrapper.style.left = leftPercent + '%';
+                wrapper.style.display = 'flex';
+                wrapper.style.alignItems = 'center';
+                wrapper.style.justifyContent = 'center';
+                wrapper.style.fontWeight = '600';
+                wrapper.style.color = '#0f172a';
+                wrapper.style.position = 'relative';
+                wrapper.style.borderRadius = '6px';
+
+                // label inside block
+                const label = document.createElement('div');
+                label.innerText = p.pid || `P${idx+1}`;
+                label.style.zIndex = '2';
+                label.style.pointerEvents = 'none';
+
+                // start & end markers on corners
+                const leftMarker = document.createElement('span');
+                leftMarker.innerText = start;
+                leftMarker.style.position = 'absolute';
+                leftMarker.style.left = '6px';
+                leftMarker.style.bottom = '4px';
+                leftMarker.style.fontSize = '0.75rem';
+                leftMarker.style.color = '#64748b';
+
+                const rightMarker = document.createElement('span');
+                rightMarker.innerText = p.ct;
+                rightMarker.style.position = 'absolute';
+                rightMarker.style.right = '6px';
+                rightMarker.style.bottom = '4px';
+                rightMarker.style.fontSize = '0.75rem';
+                rightMarker.style.color = '#64748b';
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(leftMarker);
+                wrapper.appendChild(rightMarker);
+
+                container.appendChild(wrapper);
+            });
+
+            // timeline markers (0 .. maxCT)
+            // show markers at integer times from minAT to maxCT (but avoid too many)
+            const maxMarkers = 12;
+            const span = maxCT - minAT;
+            let step = 1;
+            if (span > maxMarkers) {
+                step = Math.ceil(span / maxMarkers);
+            }
+            for (let t = minAT; t <= maxCT; t += step) {
+                const mark = document.createElement('div');
+                mark.innerText = t;
+                mark.style.fontSize = '0.85rem';
+                mark.style.color = '#475569';
+                mark.style.marginRight = '12px';
+                timelineContainer.appendChild(mark);
+            }
+        }
+
     </script>
 </body>
 </html>
