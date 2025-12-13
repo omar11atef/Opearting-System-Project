@@ -86,6 +86,9 @@
                             <option value="SJF_NonPre">SJF Non-Preemptive</option>
                             <option value="Priority_NonPreemptive">Priority (Non-Preemptive)</option>
                             <option value="Priority_Preemptive">Priority (Preemptive)</option>
+                            <!-- Added New Algorithms -->
+                            <option value="Round_Robin">Round Robin</option>
+                            <option value="Multilevel_Queue">Multilevel Queue</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
                             <i class="fas fa-chevron-down text-xs"></i>
@@ -97,6 +100,12 @@
                 <div class="col-span-1">
                     <label class="block text-sm font-semibold text-slate-700 mb-2">Number of Processes</label>
                     <input type="number" id="numProcessesInput" placeholder="e.g. 3" min="1" max="20" class="w-full bg-white border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium">
+                </div>
+
+                <!-- Quantum Input (Hidden by default, shown for Round Robin) -->
+                <div class="col-span-1 hidden" id="quantumContainer">
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Quantum</label>
+                    <input type="number" id="quantumInput" min="1" class="w-full bg-white border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium" placeholder="e.g. 2">
                 </div>
 
                 <!-- Create Inputs Button -->
@@ -191,7 +200,7 @@
                     </table>
                 </div>
 
-                <!-- Gantt Chart Box (placed right under the table as requested) -->
+                <!-- Gantt Chart Box -->
                 <div id="ganttContainer" class="mt-6">
                     <div class="presentation-card rounded-2xl p-4 border border-slate-200 bg-white">
                         <h4 class="text-lg font-bold text-slate-800 mb-3">Gantt Chart</h4>
@@ -223,14 +232,29 @@
         const algorithmSelect = document.getElementById('algorithmSelect');
         const toastContainer = document.getElementById('toast-container');
         const toastMessage = document.getElementById('toast-message');
+        
+        // Added Quantum Elements
+        const quantumContainer = document.getElementById('quantumContainer');
+        const quantumInput = document.getElementById('quantumInput');
 
-        // Show/Hide Priority Column based on selected algorithm
+        // Show/Hide Priority Column AND Quantum based on selected algorithm
         algorithmSelect.addEventListener("change", function () {
-            const showPriority = (this.value === "Priority_NonPreemptive" || this.value === "Priority_Preemptive");
+            const val = this.value;
+
+            // 1. Priority Logic: Priority (Pre/NonPre) OR Multilevel Queue
+            // Added Multilevel_Queue to this check
+            const showPriority = (val === "Priority_NonPreemptive" || val === "Priority_Preemptive" || val === "Multilevel_Queue");
             document.querySelectorAll(".priority-column").forEach(col => {
                 if (showPriority) col.classList.remove("hidden");
                 else col.classList.add("hidden");
             });
+
+            // 2. Quantum Logic: Only for Round Robin
+            if (val === "Round_Robin") {
+                quantumContainer.classList.remove("hidden");
+            } else {
+                quantumContainer.classList.add("hidden");
+            }
         });
 
         // --- Error Handling (Toast) ---
@@ -253,6 +277,10 @@
             loadingSection.classList.add('hidden');
             toastContainer.classList.remove('show');
             algorithmSelect.selectedIndex = 0;
+            // Reset visibility
+            document.querySelectorAll(".priority-column").forEach(col => col.classList.add("hidden"));
+            quantumContainer.classList.add("hidden");
+            quantumInput.value = ''; // Clear quantum
         }
 
         // --- Generate Input Fields ---
@@ -268,7 +296,8 @@
             resultsSection.classList.add('hidden');
 
             // decide if priority inputs should be created (current algorithm)
-            const showPriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive");
+            // UPDATED: Included Multilevel_Queue in check
+            const showPriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive" || algorithmSelect.value === "Multilevel_Queue");
 
             for (let i = 0; i < count; i++) {
                 const tr = document.createElement('tr');
@@ -317,7 +346,8 @@
             }
 
             // determine if we should include priority into payload
-            const includePriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive");
+            // UPDATED: Included Multilevel_Queue
+            const includePriority = (algorithmSelect.value === "Priority_NonPreemptive" || algorithmSelect.value === "Priority_Preemptive" || algorithmSelect.value === "Multilevel_Queue");
 
             for (let i = 0; i < atInputs.length; i++) {
                 const atVal = parseFloat(atInputs[i].value);
@@ -359,6 +389,24 @@
 
             const algo = algorithmSelect.value;
             
+            // Construct Payload
+            const payload = {
+                algorithm: algo,
+                processes: processes
+            };
+
+            // ✅ Add Quantum ONLY if Round Robin
+            if (algo === "Round_Robin") {
+                const qVal = parseFloat(quantumInput.value);
+                if (isNaN(qVal) || qVal <= 0) {
+                     // Hide loading and show error immediately if quantum is invalid
+                    loadingSection.classList.add('hidden');
+                    showError("Please enter a valid Quantum value (> 0).");
+                    return;
+                }
+                payload.quantum = qVal;
+            }
+            
             // 3. Send POST request to Python Backend
             try {
                 const response = await fetch('/calculate', {
@@ -366,10 +414,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        algorithm: algo,
-                        processes: processes
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 if (!response.ok) {
@@ -404,7 +449,8 @@
             results.data.forEach((r, index) => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50 transition-colors";
-                const displayPid = index + 1; 
+                // If backend returns pid use it, else P+index
+                const displayPid = r.pid || `P${index}`;
 
                 tr.innerHTML = `
                     <td class="p-4 font-semibold text-slate-800">${displayPid}</td>
